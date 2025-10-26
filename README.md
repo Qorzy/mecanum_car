@@ -22,9 +22,10 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 
 
-Clone this package (replace <YOUR_REPO_URL>):
+Clone this package:
 
-git clone <YOUR_REPO_URL>
+git clone https://github.com/Qorzy/mecanum_car
+
 git clone https://github.com/enro-itu/BLDCGazeboROS2.git
 
 
@@ -32,6 +33,7 @@ git clone https://github.com/enro-itu/BLDCGazeboROS2.git
 Navigate to the root of your workspace and build the packages:
 
 cd ~/ros2_ws
+
 colcon build --symlink-install
 
 
@@ -39,9 +41,10 @@ colcon build --symlink-install
 In every new terminal you use for this project, run the following commands:
 
 source /opt/ros/jazzy/setup.bash
+
 source ~/ros2_ws/install/setup.bash
 
-Set Gazebo Plugin Path: Ensure Gazebo can find the BLDC plugin library:
+## Set Gazebo Plugin Path: Ensure Gazebo can find the BLDC plugin library:
 
 export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ros2_ws/install/bldc_gz_sim/lib:$GZ_SIM_SYSTEM_PLUGIN_PATH
 
