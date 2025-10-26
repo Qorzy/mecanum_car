@@ -1,128 +1,81 @@
-import math
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Float64
 
-
-class CmdVelToVoltage(Node):
+class MecanumMapper(Node):
     def __init__(self):
-        super().__init__('cmd_vel_to_voltage')
+        super().__init__('mecanum_cmd_vel_to_voltage')
 
-        # --- Parametreler ---
-        self.declare_parameter('wheel_separation', 0.36)     # [m]
-        self.declare_parameter('wheel_radius', 0.08)         # [m]
-        self.declare_parameter('max_voltage', 24.0)          # [V]
-        self.declare_parameter('kv_vel', 0.04)               # [V / (rad/s)]
-        self.declare_parameter('ks_static', 0.6)             # [V] statik sürtünme önyargısı
-        self.declare_parameter('deadman_timeout', 0.5)       # [s]
-        self.declare_parameter('publish_rate_hz', 50.0)
+        # Params
+        p = self.declare_parameter
+        self.r   = p('wheel_radius', 0.08).value
+        self.Lx = p('half_wheelbase', 0.20).value
+        self.Ly = p('half_track',     0.18).value
+        self.kv = p('kv',             0.02).value
+        self.vmax = p('vmax',           24.0).value
 
-        self.declare_parameter('left_cmd_topic', '/rear_left/voltage_cmd')
-        self.declare_parameter('right_cmd_topic', '/rear_right/voltage_cmd')
+        self.fl_sign = p('fl_sign', 1.0).value
+        self.fr_sign = p('fr_sign', 1.0).value
+        self.rl_sign = p('rl_sign', 1.0).value
+        self.rr_sign = p('rr_sign', 1.0).value
 
-        # === Yeni “sigorta”lar ===
-        self.declare_parameter('yaw_sign', 1.0)              # +1: olduğu gibi, -1: angular.z ters
-        self.declare_parameter('left_sign', 1.0)             # +1/-1: sol teker yön çevir
-        self.declare_parameter('right_sign', 1.0)            # +1/-1: sağ teker yön çevir
-        self.declare_parameter('swap_sides', False)          # True: sol/sağ komutları çaprazla
-        self.declare_parameter('log_debug', False)           # True: periyodik log
+        self.fl_topic = p('fl_topic', '/mecanum/front_left/voltage').value
+        self.fr_topic = p('fr_topic', '/mecanum/front_right/voltage').value
+        self.rl_topic = p('rl_topic', '/mecanum/rear_left/voltage').value
+        self.rr_topic = p('rr_topic', '/mecanum/rear_right/voltage').value
 
-        # Param okuma
-        self.L = float(self.get_parameter('wheel_separation').value)
-        self.R = float(self.get_parameter('wheel_radius').value)
-        self.VMAX = float(self.get_parameter('max_voltage').value)
-        self.kv = float(self.get_parameter('kv_vel').value)
-        self.ks = float(self.get_parameter('ks_static').value)
-        self.deadman_timeout = float(self.get_parameter('deadman_timeout').value)
-        rate_hz = float(self.get_parameter('publish_rate_hz').value)
-
-        left_topic = str(self.get_parameter('left_cmd_topic').value)
-        right_topic = str(self.get_parameter('right_cmd_topic').value)
-
-        self.yaw_sign = float(self.get_parameter('yaw_sign').value)
-        self.left_sign = float(self.get_parameter('left_sign').value)
-        self.right_sign = float(self.get_parameter('right_sign').value)
-        self.swap_sides = bool(self.get_parameter('swap_sides').value)
-        self.log_debug = bool(self.get_parameter('log_debug').value)
-
-        # Publisherlar
-        self.left_pub = self.create_publisher(Float64, left_topic, 10)
-        self.right_pub = self.create_publisher(Float64, right_topic, 10)
+        # Publishers
+        self.pub_fl = self.create_publisher(Float64, self.fl_topic, 10)
+        self.pub_fr = self.create_publisher(Float64, self.fr_topic, 10)
+        self.pub_rl = self.create_publisher(Float64, self.rl_topic, 10)
+        self.pub_rr = self.create_publisher(Float64, self.rr_topic, 10)
 
         # Subscriber
-        self.sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_cb, 10)
+        self.create_subscription(Twist, '/cmd_vel', self.on_cmd, 10)
 
-        # Durum
-        self.last_cmd = Twist()
-        self.last_stamp = self.get_clock().now()
-
-        self.timer = self.create_timer(1.0 / max(1.0, rate_hz), self.on_timer)
+        self.k_sum = self.Lx + self.Ly
         self.get_logger().info(
-            f'Mapping /cmd_vel -> {left_topic}, {right_topic} | '
-            f'params: yaw_sign={self.yaw_sign}, left_sign={self.left_sign}, right_sign={self.right_sign}, swap={self.swap_sides}'
+            f"Mecanum map /cmd_vel -> {self.fl_topic},{self.fr_topic},{self.rl_topic},{self.rr_topic} | "
+            f"r={self.r}, Lx={self.Lx}, Ly={self.Ly}, kv={self.kv}, vmax={self.vmax}"
         )
 
-    def cmd_cb(self, msg: Twist):
-        self.last_cmd = msg
-        self.last_stamp = self.get_clock().now()
+    def clamp(self, v): return max(-self.vmax, min(self.vmax, v))
 
-    @staticmethod
-    def _clamp(x: float, bound: float) -> float:
-        return max(-bound, min(bound, x))
+    def on_cmd(self, msg: Twist):
+        vx = msg.linear.x      # forward (+)
+        vy = msg.linear.y      # left (+)
+        wz = msg.angular.z     # CCW (+)
 
-    def on_timer(self):
-        now = self.get_clock().now()
-        if (now - self.last_stamp).nanoseconds * 1e-9 > self.deadman_timeout:
-            self.publish_voltage(0.0, 0.0)
-            return
+        r, k = self.r, self.k_sum
 
-        vx = float(self.last_cmd.linear.x)       # ileri + (m/s)
-        wz = float(self.last_cmd.angular.z)      # +: sola/CCW (REP-103)
-        wz *= self.yaw_sign                      # Gerekirse işaret düzelt
+        # wheel speeds (rad/s)
+        w_fl = ( vx - vy - k*wz ) / r
+        w_fr = ( vx + vy + k*wz ) / r
+        w_rl = ( vx + vy - k*wz ) / r
+        w_rr = ( vx - vy + k*wz ) / r
 
-        # Diferansiyel sürüş (teker açısal hızları, rad/s)
-        omega_left  = (vx - 0.5 * wz * self.L) / self.R
-        omega_right = (vx + 0.5 * wz * self.L) / self.R
+        # voltage feed-forward
+        Vfl = self.clamp(self.fl_sign * self.kv * w_fl)
+        Vfr = self.clamp(self.fr_sign * self.kv * w_fr)
+        Vrl = self.clamp(self.rl_sign * self.kv * w_rl)
+        Vrr = self.clamp(self.rr_sign * self.kv * w_rr)
 
-        # Voltaj tahmini + statik sürtünme (simetrik)
-        v_left  = self.kv * omega_left  + (self.ks if omega_left  > 0 else (-self.ks if omega_left  < 0 else 0.0))
-        v_right = self.kv * omega_right + (self.ks if omega_right > 0 else (-self.ks if omega_right < 0 else 0.0))
-
-        # Tek tek yön çevir (gerekirse)
-        v_left  *= self.left_sign
-        v_right *= self.right_sign
-
-        # Satürasyon (simetrik)
-        v_left  = self._clamp(v_left,  self.VMAX)
-        v_right = self._clamp(v_right, self.VMAX)
-
-        # Sol/Sağ’ı çaprazlamak gerekirse
-        if self.swap_sides:
-            v_left, v_right = v_right, v_left
-
-        if self.log_debug:
-            self.get_logger().info(f"vx={vx:.3f} wz={wz:.3f}  ->  vL={v_left:.3f}  vR={v_right:.3f}")
-
-        self.publish_voltage(v_left, v_right)
-
-    def publish_voltage(self, left_v: float, right_v: float):
-        ml = Float64(); ml.data = float(left_v)
-        mr = Float64(); mr.data = float(right_v)
-        self.left_pub.publish(ml)
-        self.right_pub.publish(mr)
-
+        self.pub_fl.publish(Float64(data=Vfl))
+        self.pub_fr.publish(Float64(data=Vfr))
+        self.pub_rl.publish(Float64(data=Vrl))
+        self.pub_rr.publish(Float64(data=Vrr))
 
 def main():
     rclpy.init()
-    node = CmdVelToVoltage()
+    node = MecanumMapper()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

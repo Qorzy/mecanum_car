@@ -3,7 +3,7 @@
   <name>bldc_car_demo</name>
   <version>0.1.0</version>
   <description>Simple 4-wheel car driven by rear BLDC plugins; front casters.</description>
-  <maintainer email="you@example.com">Your Name</maintainer>
+  <maintainer email="ilhan_altinay@hotmail.com">ilhan</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

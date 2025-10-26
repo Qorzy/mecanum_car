@@ -20,14 +20,13 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    author='Your Name',
-    author_email='you@example.com',
+    author='ilhan',
+    author_email='ilhan_altinay@hotmail.com',
     description='4-wheel car with rear BLDC motors controlled via voltage from /cmd_vel',
     license='MIT',
     entry_points={
         'console_scripts': [
             'cmd_vel_to_voltage = bldc_car_demo.nodes.cmd_vel_to_voltage:main',
-            'state_bridge = bldc_car_demo.nodes.state_bridge:main',
         ],
     },
 )
