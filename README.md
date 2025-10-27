@@ -12,73 +12,96 @@ This ROS 2 package simulates a 4-wheel mecanum drive robot in Gazebo Sim, utiliz
 
 ## Install required ROS packages:
 
-`sudo apt update`
-`sudo apt install ros-jazzy-desktop ros-jazzy-gazebo-ros-pkgs python3-colcon-common-extensions git ros-jazzy-teleop-twist-keyboard`
+```bash
+sudo apt update
+sudo apt install ros-jazzy-desktop ros-jazzy-gazebo-ros-pkgs python3-colcon-common-extensions git ros-jazzy-teleop-twist-keyboard
+```
 
 ## 2. Workspace Setup
+
 Create your ROS 2 workspace:
 
+```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-
+```
 
 Clone this package:
 
+```bash
 git clone https://github.com/Qorzy/mecanum_car
-
 git clone https://github.com/enro-itu/BLDCGazeboROS2.git
+```
 
+## 3. Build
 
-## Build
 Navigate to the root of your workspace and build the packages:
 
+```bash
 cd ~/ros2_ws
-
 colcon build --symlink-install
+```
 
+## 4. Environment Setup
 
-## Environment Setup
 In every new terminal you use for this project, run the following commands:
 
+```bash
 source /opt/ros/jazzy/setup.bash
-
 source ~/ros2_ws/install/setup.bash
+```
 
-## Set Gazebo Plugin Path: Ensure Gazebo can find the BLDC plugin library:
+Set Gazebo Plugin Path: Ensure Gazebo can find the BLDC plugin library:
 
+```bash
 export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/ros2_ws/install/bldc_gz_sim/lib:$GZ_SIM_SYSTEM_PLUGIN_PATH
+```
 
-Tip: Add these source and export commands to your ~/.bashrc file for automatic loading in new terminals.
+**Tip:** Add these `source` and `export` commands to your `~/.bashrc` file for automatic loading in new terminals.
 
-1. Running the Simulation
+## 5. Running the Simulation
+
 You will need two separate terminals (ensure Environment Setup is done in both):
 
-Terminal A (Start Simulation & Controller):
+**Terminal A (Start Simulation & Controller):**
 
+```bash
 ros2 launch bldc_car_demo sim_car.launch.py
+```
 
-This launches Gazebo Sim with the specified world and the mecanum robot model (including detailed rollers and BLDC plugins). It also starts the mecanum_cmd_vel_to_voltage (MecanumMapper) node, loading parameters from params/car.yaml.
+This launches Gazebo Sim with the specified world and the mecanum robot model (including detailed rollers and BLDC plugins). It also starts the `mecanum_cmd_vel_to_voltage` (MecanumMapper) node, loading parameters from `params/car.yaml`.
 
-Terminal B (Keyboard Teleoperation):
+**Terminal B (Keyboard Teleoperation):**
 
+```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
-This starts the keyboard teleoperation node, publishing commands to the /cmd_vel topic.
+```
+This starts the keyboard teleoperation node, publishing commands to the `/cmd_vel` topic.
 
+## 6. Controls
 
-1. Controls
-Use Terminal B (running teleop_twist_keyboard) to control the robot. Make sure this terminal window has focus.
+Use **Terminal B** (running `teleop_twist_keyboard`) to control the robot. Make sure this terminal window has focus.
 
 Moving around:
+```
    u    i    o
    j    k    l
    m    ,    .
+```
 
-For Holonomic mode (strafing), hold down the shift key:
----------------------------
+For **Holonomic mode** (strafing), hold down the **Shift** key:
+```
    U    I    O
    J    K    L
    M    <    >
+```
 
-q/z, w/x, e/c: Adjust Speeds (Max, Linear, Angular)
+Speed control:
+```
+q/z : increase/decrease max speeds
+w/x : increase/decrease linear speed
+e/c : increase/decrease angular speed
+```
 
-CTRL+C: Stops the teleop node.
+Press **CTRL+C** to stop the teleop node.
+
